@@ -1,7 +1,15 @@
 {
 	"folders": [
 		{
-			"path": ".."
+			"name": "210121-120453-nodemcuv2",
+			"path": "../../210121-120453-nodemcuv2"
+		},
+		{
+			"path": "../../../../Arduino/libraries/LittleFS_esp32/examples/LITTLEFS_PlatformIO"
+		},
+		{
+			"name": "esp32_root",
+			"path": "../../esp32_root"
 		}
 	],
 	"settings": {}

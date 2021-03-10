@@ -1,0 +1,19 @@
+-mq135 analog  
+-bh1750  i2c 
+-bme280  i2c 
+-lcd      i2c
+-ttl      serial
+-sim module  serial
+-z19      serial
+mcp     8 analog
+-rtc i2c
+-sd  spi
+relay digital
+led digital 
+power in 
+
+
+4 i2c 
+3  serial 
+1 spi
+9 analog

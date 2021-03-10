@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../Downloads/esp-mdf-master-2/examples/function_demo/mwifi/mqtt_example"
+		},
+		{
+			"name": "210219-161221-espidf-arduino-blink",
+			"path": "../../210219-161221-espidf-arduino-blink"
+		},
+		{
+			"path": "../../32_root"
+		}
+	],
+	"settings": {}
+}

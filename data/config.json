@@ -2,9 +2,9 @@
     
     "mssid":"HetaDatain1",
     "mpass":"Test@Run_1",
-
-    "rssid1":"Hetadatain_GF","rpass1":"hetadatain@123",
-    "rssid2":"Hetadatain_GF","rpass2":"hetadatain@123",
+    "id": "0",
+    "rssid1":"TP-LINK","rpass1":"hardware",
+    "rssid2":"TP-LINK","rpass2":"hardware",
     
     "ip11":"50","ip12":"62","ip13":"22","ip14":"142",
     

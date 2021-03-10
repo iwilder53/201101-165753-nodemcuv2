@@ -3,7 +3,7 @@
 //#include "RTCDS1307.h"
 #include <TZ.h>
 #include "RTClib.h"
-#include <LittleFS.h>
+#include <SD.h>
 #include "FS.h"
 #include <Arduino.h>
 #include <painlessMesh.h>
@@ -17,7 +17,7 @@
 #endif
 #include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
-
+#include <Arduino_JSON.h>
 int prevPeriod = 0;                                         // Function "mllis()" gives time in milliseconds. Here "period" will store time in seconds
 
 #include <coredecls.h>                  // settimeofday_cb()
@@ -35,9 +35,7 @@ int prevPeriod = 0;                                         // Function "mllis()
 bool isConnected;
 
 #define MYTZ TZ_Asia_Kolkata
- 
 uint32_t ack_to_node;
-boolean rtcSet ;
 long time_now = 0;
 static timeval tv;
 static timespec tp;
@@ -50,11 +48,12 @@ static bool time_machine_running = false;
 
 extern "C" int clock_gettime(clockid_t unused, struct timespec *tp);
 
+const uint32_t nmcu_epoch = 1611040428; 
 AsyncWebServer server(80);
 
 #define   MESH_PORT       5555                               
 
-#define HOSTNAME "MQTT_Bridge"
+#define HOSTNAME "HetaDatainMesh_Root"
 
 // Prototypes
 void receivedCallback( const uint32_t &from, const String &msg );
@@ -64,6 +63,7 @@ void sendTime();
 void showTime() ;
 void time_is_set_scheduled();
 void updateTime();
+void RtcSetTime();
 
 IPAddress getlocalIP();
 IPAddress testIP(0,0,0,0);
@@ -104,8 +104,7 @@ void updateTime(){
   time_now++;
 }
 void RtcSetTime(){
-
-  if(!rtcSet){
+  if(rtc.lostPower() || time_now < nmcu_epoch){         // just to reset rtc in case of power failure or something
 
   Serial.print("getting timeStamp");
   // DateTime now = rtc.now();
@@ -115,33 +114,32 @@ void RtcSetTime(){
   now = time(nullptr);
   //Serial.print("time:      ");
   int timeNow = ((uint32_t)now);
+  time_now = timeNow;
   //timeNow +=  timeNow + 19800;
   rtc.adjust((uint32_t)now);
-  rtcSet = true;
   Serial.println("setting rtc to :" );
   Serial.print(timeNow);
 
   }
+
 }
 // to send time to mesh nodes 
 Task taskSendTime(TASK_MINUTE * 1 , TASK_FOREVER, &sendTime );   
 void sendTime()
 { 
-  
-
   String timeFromRTC = String(time_now);
+
   mesh.sendBroadcast(timeFromRTC);
- Serial.println(timeFromRTC);
-isConnected = false;
-String ack_pulse_to_sub = "ready";
-mqttClient.publish("hetadatainMesh/from/gateway", ack_pulse_to_sub.c_str());
+  Serial.println(timeFromRTC);
+  isConnected = false;
+  String ack_pulse_to_sub = "ready";
+  mqttClient.publish("test/lol", ack_pulse_to_sub.c_str());
  }
 //for testing the topology 
 String scanprocessor(const String& var)
 {
   if(var == "SCAN")
-  String connlist = mesh.subConnectionJson();
-   // return connlist ;
+    return mesh.subConnectionJson(false) ;
   return String();
 }
 // sending the data stored 
@@ -149,10 +147,10 @@ Task taskSendLog( TASK_MILLISECOND * 500 , TASK_FOREVER, &sendLog );   // Set ta
 
   void sendLog(){
          String logs;
-         String topic = "hetadatainMesh/from/gateway";
+         String topic = "test/lol";
 
-    LittleFS.begin();
-    File file = LittleFS.open("offlinelog.txt","r"); // FILE_READ is default so not realy needed but if you like to use this technique for e.g. write you need FILE_WRITE
+    SD.begin(D8);
+    File file = SD.open("offlinelog.txt","r"); // FILE_READ is default so not realy needed but if you like to use this technique for e.g. write you need FILE_WRITE
 //#endif
   if (!file) {
     Serial.println("No File Found ");
@@ -189,9 +187,9 @@ Task taskSendLog( TASK_MILLISECOND * 500 , TASK_FOREVER, &sendLog );   // Set ta
         Serial.print(msgRTCAlert);
       }
      Serial.print ("done dumping");
-      LittleFS.remove("offlinelog.txt");
+      SD.remove("offlinelog.txt");
   }
-      LittleFS.end();
+      SD.end();
 
     }
 
@@ -201,8 +199,8 @@ Serial.begin(115200);
 
 
 
-LittleFS.begin();
-  File configFile = LittleFS.open("/config.json", "r");
+SD.begin(D8);
+  File configFile = SD.open("/config.json", "r");
   if (!configFile) {
     Serial.println("Failed to open config file");
   }
@@ -294,7 +292,7 @@ const char* ip_4 = doc["IP4"];
 
 
 
-  LittleFS.end();
+  SD.end();
 mqttClient.setServer(mqtt1, 1883);
 mqttClient.setCallback(mqttCallback);
 
@@ -344,7 +342,9 @@ mqttClient.setCallback(mqttCallback);
     });
   server.on("/map", HTTP_GET, [](AsyncWebServerRequest *request)
     {
-    request->send_P(200, "text/html", "<html><head><script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.js'></script><link href='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis-network.min.css' rel='stylesheet' type='text/css' /><style type='text/css'>#mynetwork {width: 1024px;height: 768px;border: 1px solid lightgray;}</style></head><body><h1>PainlessMesh Network Map</h1><div id='mynetwork'></div><a href=https://visjs.org>Made with vis.js<img src='http://www.davidefabbri.net/files/visjs_logo.png' width=40 height=40></a><script>var txt = '%SCAN%';</script><script type='text/javascript' src='http://www.davidefabbri.net/files/painlessmeshmap.js'></script></body></html>", scanprocessor);
+     request->send_P(200, "text/html", "<html><head><script type='text/javascript' src='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.js'></script><link href='https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis-network.min.css' rel='stylesheet' type='text/css' /><style type='text/css'>#mynetwork {width: 1024px;height: 768px;border: 1px solid darkgray;}</style></head><body><h1>Hetadatain Network Map</h1><div id='mynetwork'></div><a href=https://hetadatain.com>Made For Suraj Sir <img src='https://cdn.shopify.com/s/files/1/1061/1924/files/Tongue_Out_Emoji_2.png?11214052019865124406' width=40 height=40></a><script>var txt = '%SCAN%';</script><script type='text/javascript' src='http://www.davidefabbri.net/files/painlessmeshmap.js'></script></body></html>", scanprocessor);
+ 
+ 
     });
   server.on("/scan", HTTP_GET, [](AsyncWebServerRequest *request)
     {
@@ -387,8 +387,8 @@ if(millis() >= 60000 && testIP == getlocalIP())
             //taskSendLog.enable();
 
        if (mqttClient.connect("hetadatainMeshClient")) {
-      mqttClient.publish("hetadatainMesh/from/gateway","Ready! Reconnected");
-      mqttClient.subscribe("hetadatainMesh/to/gateway");
+      mqttClient.publish("test/lol","Ready! Reconnected");
+      mqttClient.subscribe("test/rofl");
       //taskSendLog.enable();
        }
     } 
@@ -398,9 +398,9 @@ if(millis() >= 60000 && testIP == getlocalIP())
     Serial.println("My IP is " + myIP.toString());
 
     if (mqttClient.connect("hetadatainMeshClient")) {
-      mqttClient.publish("hetadatainMesh/from/gateway","ready");
-      mqttClient.subscribe("hetadatainMesh/to/gateway");
-      taskSetRtc.enableDelayed(1000);
+      mqttClient.publish("test/lol","ready");
+      mqttClient.subscribe("test/rofl");
+      taskSetRtc.enableDelayed(10000);
 
     } 
   }
@@ -409,81 +409,58 @@ if(millis() >= 60000 && testIP == getlocalIP())
 // Publish Received msg from nodes to mqtt broker if connected or save to internal storage
 void receivedCallback( const uint32_t &from, const String &msg ) {
  Serial.println(msg);
-  
-  if(msg == "online?"){
-  mesh.sendSingle(from, String("online"));
-
-    }
-  
-  else{
-    if (!mqttClient.connected() || isConnected == false)
+    JSONVar myObject = JSON.parse(msg.c_str());
+    const char *type = myObject["type"];
+    // if (!isConnected && type == "data" )
+    if (!isConnected)
     {
       taskSendLog.disable();
-      LittleFS.begin();
-      File dataFile = LittleFS.open("offlinelog.txt", "a");
-       dataFile.println(msg);
-       dataFile.close();
-       LittleFS.end();
-       Serial.print("to card");
+      SD.begin(D8);
+      File dataFile = SD.open("offlinelog.txt", "a");
+      dataFile.println(msg);
+      dataFile.close();
+      SD.end();
+      Serial.print("to card");
     }
     else {
-  String topic = "hetadatainMesh/from/" + String(from);
+  String topic = "test/lol";
  
   mqttClient.publish(topic.c_str(), msg.c_str());
     }
   }
-  
-   if(period >= 600 && testIP == getlocalIP()){
-  while(1);
-  }
- 
-                                   
-}
-//for recieving data from broker
-void mqttCallback(char* topic, uint8_t* payload, unsigned int length) {
 
-  char* cleanPayload = (char*)malloc(length+1);
-  payload[length] = '\0';
-  memcpy(cleanPayload, payload, length+1);
-  String msg = String(cleanPayload);
-  free(cleanPayload);
-  String targetStr = String(topic).substring(16);
-
-      isConnected = true;
-      //taskSendLog.enable();
-
-  if(targetStr == "gateway")
+  //for recieving data from broker
+  void mqttCallback(char *topic, uint8_t *payload, unsigned int length)
   {
-      isConnected = true;
-      taskSendLog.enable();
-   
-    if(msg == "getNodes")
+    StaticJsonDocument<1024> doc;
+    deserializeJson(doc, payload, length);
+    if (doc["type"] == "config")
     {
-      auto nodes = mesh.getNodeList(true);
-      String str;
-      for (auto &&id : nodes)
-        str += String(id) + String(" ");
-      mqttClient.publish("hetadatainMesh/from/gateway", str.c_str());
+      JSONVar msg;
+      const char *ID = doc["id"];
+      msg["data"] = payload;
+      String data = JSON.stringify(msg);
+      if (ID == "0")
+      {
+        SPIFFS.remove("/config.json");
+      File config = SPIFFS.open("config.json","w");
+      config.print(data);
+      SPIFFS.end();
+
+      }
+      else
+      {
+       
+        mesh.sendSingle(atoi(ID), data);
+      }
+    }
+    else if (doc["type" == "restart"])
+    {
+      mesh.sendBroadcast("restart");
+      delay(100);
+      ESP.restart();
     }
   }
-  else if(targetStr == "broadcast") 
-  {
-    mesh.sendBroadcast(msg);
-  }
-  else
-  {
-    uint32_t target = strtoul(targetStr.c_str(), NULL, 10);
-    if(mesh.isConnected(target))
-    {
-      mesh.sendSingle(target, msg);
-    }
-    else
-    {
-    // mqttClient.publish("hetadatainMesh/from/gateway", "Client not connected!");
-    }
- 
-  
-}}
 
 IPAddress getlocalIP() {
   return IPAddress(mesh.getStationIP());
