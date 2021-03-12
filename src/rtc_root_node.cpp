@@ -1,12 +1,17 @@
 //This Code will only be utilised for root node. 
 // Cloud IP - 50.62.22.142 
 //#include "RTCDS1307.h"
+#define TINY_GSM_MODEM_SIM800
+ 
+#define USE_SIM 
+
 #include <TZ.h>
 #include "RTClib.h"
 #include <SD.h>
 #include "FS.h"
 #include <Arduino.h>
 #include <painlessMesh.h>
+#include <TinyGsmClient.h>
 #include <PubSubClient.h>
 #include <WiFiClient.h>
 #ifdef ESP8266
@@ -18,6 +23,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ESP8266WiFi.h>
 #include <Arduino_JSON.h>
+#include "LittleFS.h"
 int prevPeriod = 0;                                         // Function "mllis()" gives time in milliseconds. Here "period" will store time in seconds
 
 #include <coredecls.h>                  // settimeofday_cb()
@@ -33,6 +39,7 @@ int prevPeriod = 0;                                         // Function "mllis()
 
 
 bool isConnected;
+#define TINY_GSM_MODEM_SIM800
 
 #define MYTZ TZ_Asia_Kolkata
 uint32_t ack_to_node;
@@ -41,7 +48,7 @@ static timeval tv;
 static timespec tp;
 static time_t now;
 static uint32_t now_ms, now_us;
-
+uint8_t sim;
 static esp8266::polledTimeout::periodicMs showTimeNow(60000);
 static int time_machine_days = 0; // 0 = now
 static bool time_machine_running = false;
@@ -54,6 +61,14 @@ AsyncWebServer server(80);
 #define   MESH_PORT       5555                               
 
 #define HOSTNAME "HetaDatainMesh_Root"
+#define SerialMon Serial
+
+#define SerialAT Serial
+
+
+#define GSM_AUTOBAUD_MIN 9600
+#define GSM_AUTOBAUD_MAX 115200
+const char apn[] = "www";
 
 // Prototypes
 void receivedCallback( const uint32_t &from, const String &msg );
@@ -64,7 +79,7 @@ void showTime() ;
 void time_is_set_scheduled();
 void updateTime();
 void RtcSetTime();
-
+boolean mqttConnect();
 IPAddress getlocalIP();
 IPAddress testIP(0,0,0,0);
 IPAddress myIP(0,0,0,0);
@@ -78,16 +93,23 @@ uint8_t ip1_oct1,ip1_oct2,ip1_oct3,ip1_oct4;
 uint8_t ip2_oct1,ip2_oct2,ip2_oct3,ip2_oct4;
  long pos;
 
-
+uint16_t wdt;
 String Secondary_SSID;
 String Secondary_PASS;
 
 
+TinyGsm modem(SerialAT);
+TinyGsmClient client(modem);
 
 painlessMesh  mesh;
+#ifdef USE_SIM 
+PubSubClient mqttClient(client);
+#else
 WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);            
-          
+
+PubSubClient mqttClient(wifiClient);
+
+#endif
 Scheduler userScheduler;
 RTC_DS3231 rtc;
 
@@ -102,6 +124,7 @@ Task taskSetRtc(TASK_SECOND, TASK_ONCE, &RtcSetTime );
 
 void updateTime(){
   time_now++;
+  wdt++;
 }
 void RtcSetTime(){
   if(rtc.lostPower() || time_now < nmcu_epoch){         // just to reset rtc in case of power failure or something
@@ -197,10 +220,8 @@ void setup() {
 Serial.begin(115200);
   rtc.begin();
 
-
-
-SD.begin(D8);
-  File configFile = SD.open("/config.json", "r");
+LittleFS.begin();
+  File configFile = LittleFS.open("/config.json", "r");
   if (!configFile) {
     Serial.println("Failed to open config file");
   }
@@ -239,8 +260,8 @@ SD.begin(D8);
   Serial.println(STATION_PASSWORD);
   Serial.println(Secondary_SSID);
   Serial.println(Secondary_PASS);
-
-
+  //const char* SIM = doc["sim"];
+  //sim = atoi(SIM);
   const char* ip1 = doc["ip11"]; 
   const char* ip2 = doc["ip12"]; 
   const char* ip3 = doc["ip13"]; 
@@ -292,7 +313,7 @@ const char* ip_4 = doc["IP4"];
 
 
 
-  SD.end();
+  LittleFS.end();
 mqttClient.setServer(mqtt1, 1883);
 mqttClient.setCallback(mqttCallback);
 
@@ -307,9 +328,52 @@ mqttClient.setCallback(mqttCallback);
   mesh.onReceive(&receivedCallback);
   Serial.print("Node id is: ");                                                 
   Serial.println(mesh.getNodeId());
+#ifdef  USE_SIM
+  
 
-  mesh.stationManual(STATION_SSID, STATION_PASSWORD);
-  mesh.setHostname(HOSTNAME);
+   TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
+
+    modem.init();
+
+    String modemInfo = modem.getModemInfo();
+    SerialMon.print("Modem Info: ");
+    SerialMon.println(modemInfo);
+
+
+
+  SerialMon.print("Waiting for network...");
+  if (!modem.waitForNetwork()) {
+    SerialMon.println(" fail");
+    delay(5000);
+    return;
+  }
+  SerialMon.println(" success");
+
+  if (modem.isNetworkConnected()) {
+    SerialMon.println("Network connected");
+  }
+
+  // GPRS connection parameters are usually set after network registration
+    SerialMon.print(F("Connecting to "));
+    SerialMon.print(apn);
+    if (!modem.gprsConnect(apn)) {
+      SerialMon.println(" fail");
+      delay(5000);
+      return;
+    }
+    SerialMon.println(" success");
+
+  if (modem.isGprsConnected()) {
+    SerialMon.println("GPRS connected");
+  }
+  
+  #else
+  
+
+    mesh.stationManual(STATION_SSID, STATION_PASSWORD);
+    mesh.setHostname(HOSTNAME);
+
+  #endif
 
   mesh.setRoot(true);
   mesh.setContainsRoot(true);
@@ -361,20 +425,33 @@ mqttClient.setCallback(mqttCallback);
  
 
 }
-
+ulong lastReconnectAttempt;
 void loop() {
   mesh.update(); // mesh scheduler
   mqttClient.loop();
-
-
+  if (!mqttClient.connected()) {
+    SerialMon.println("=== MQTT NOT CONNECTED ===");
+    // Reconnect every 10 seconds
+    uint32_t t = millis();
+    if (t - lastReconnectAttempt > 5000L) {
+      lastReconnectAttempt = t;
+      if (mqttConnect()) {
+        lastReconnectAttempt = 0;
+      }
+    }
+    delay(100);
+    return;
+  }
+      
+  if (wdt > 300){ESP.restart();}
  if (time_now == 10800){ESP.reset();}
  //various checks to ensure redunduncy
-  if(getlocalIP() == testIP){
+ /* if(getlocalIP() == testIP){
     isConnected = false;
 
-  } 
+  } */
 //for secondary network if it exists
-
+/*
 if(millis() >= 60000 && testIP == getlocalIP()) 
   {
     Serial.print("trying secondary ssid");
@@ -391,7 +468,7 @@ if(millis() >= 60000 && testIP == getlocalIP())
       mqttClient.subscribe("test/rofl");
       //taskSendLog.enable();
        }
-    } 
+    } */
 //  connecting for the first time
   if(myIP != getlocalIP()){
     myIP = getlocalIP();
@@ -409,9 +486,8 @@ if(millis() >= 60000 && testIP == getlocalIP())
 // Publish Received msg from nodes to mqtt broker if connected or save to internal storage
 void receivedCallback( const uint32_t &from, const String &msg ) {
  Serial.println(msg);
-    JSONVar myObject = JSON.parse(msg.c_str());
-    const char *type = myObject["type"];
     // if (!isConnected && type == "data" )
+    wdt = 0;
     if (!isConnected)
     {
       taskSendLog.disable();
@@ -431,7 +507,10 @@ void receivedCallback( const uint32_t &from, const String &msg ) {
 
   //for recieving data from broker
   void mqttCallback(char *topic, uint8_t *payload, unsigned int length)
-  {
+  { 
+    wdt = 0;
+    taskSendLog.enableIfNot();
+    isConnected = true;
     StaticJsonDocument<1024> doc;
     deserializeJson(doc, payload, length);
     if (doc["type"] == "config")
@@ -530,3 +609,20 @@ void showTime() {
 }
 
  
+boolean mqttConnect() {
+
+  // Connect to MQTT Broker
+  boolean status = mqttClient.connect("GsmClientTest");
+
+  // Or, if you want to authenticate MQTT:
+  //boolean status = mqtt.connect("GsmClientName", "mqtt_user", "mqtt_pass");
+
+  if (status == false) {
+    SerialMon.println(" fail");
+    return false;
+  }
+  SerialMon.println(" success");
+      mqttClient.publish("test/lol","Ready! Reconnected");
+      mqttClient.subscribe("test/rofl");
+  return mqttClient.connected();
+}
