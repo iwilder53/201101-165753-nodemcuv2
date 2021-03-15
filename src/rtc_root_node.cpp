@@ -3,11 +3,11 @@
 //#include "RTCDS1307.h"
 #define TINY_GSM_MODEM_SIM800
  
-#define USE_SIM 
+//#define USE_SIM 
 
 #include <TZ.h>
 #include "RTClib.h"
-#include <SD.h>
+#include <LittleFS.h>
 #include "FS.h"
 #include <Arduino.h>
 #include <painlessMesh.h>
@@ -29,7 +29,7 @@ int prevPeriod = 0;                                         // Function "mllis()
 #include <coredecls.h>                  // settimeofday_cb()
 #include <Schedule.h>
 #include <PolledTimeout.h>
-
+#include "string.h"
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
 
@@ -124,7 +124,7 @@ Task taskSetRtc(TASK_SECOND, TASK_ONCE, &RtcSetTime );
 
 void updateTime(){
   time_now++;
-  wdt++;
+ // wdt++;
 }
 void RtcSetTime(){
   if(rtc.lostPower() || time_now < nmcu_epoch){         // just to reset rtc in case of power failure or something
@@ -150,13 +150,14 @@ void RtcSetTime(){
 Task taskSendTime(TASK_MINUTE * 1 , TASK_FOREVER, &sendTime );   
 void sendTime()
 { 
-  String timeFromRTC = String(time_now);
+String timeFromRTC = String(time_now);
+  // ltoa(time_now, timeFromRTC,10); //String(time_now);
 
   mesh.sendBroadcast(timeFromRTC);
   Serial.println(timeFromRTC);
   isConnected = false;
-  String ack_pulse_to_sub = "ready";
-  mqttClient.publish("test/lol", ack_pulse_to_sub.c_str());
+  char ack_pulse_to_sub[] = "ready";
+  mqttClient.publish("test/lol", ack_pulse_to_sub);
  }
 //for testing the topology 
 String scanprocessor(const String& var)
@@ -166,14 +167,14 @@ String scanprocessor(const String& var)
   return String();
 }
 // sending the data stored 
-Task taskSendLog( TASK_MILLISECOND * 500 , TASK_FOREVER, &sendLog );   // Set task second to send msg in a time interval
+Task taskSendLog( TASK_MILLISECOND * 200 , TASK_FOREVER, &sendLog );   // Set task second to send msg in a time interval
 
   void sendLog(){
          String logs;
          String topic = "test/lol";
 
-    SD.begin(D8);
-    File file = SD.open("offlinelog.txt","r"); // FILE_READ is default so not realy needed but if you like to use this technique for e.g. write you need FILE_WRITE
+    LittleFS.begin();
+    File file = LittleFS.open("offlinelog.txt","r"); // FILE_READ is default so not realy needed but if you like to use this technique for e.g. write you need FILE_WRITE
 //#endif
   if (!file) {
     Serial.println("No File Found ");
@@ -210,9 +211,9 @@ Task taskSendLog( TASK_MILLISECOND * 500 , TASK_FOREVER, &sendLog );   // Set ta
         Serial.print(msgRTCAlert);
       }
      Serial.print ("done dumping");
-      SD.remove("offlinelog.txt");
+      LittleFS.remove("/offlinelog.txt");
   }
-      SD.end();
+      LittleFS.end();
 
     }
 
@@ -320,11 +321,11 @@ mqttClient.setCallback(mqttCallback);
  // rtc.setDate(, 2, 28);
  // rtc.setTime(23, 59, 50);
 
-// mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION  | MSG_TYPES | REMOTE | GENERAL);                  
+ mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION  | MSG_TYPES | REMOTE | GENERAL);                  
 
  
   
-  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 1 );
+  mesh.init( MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 13 );
   mesh.onReceive(&receivedCallback);
   Serial.print("Node id is: ");                                                 
   Serial.println(mesh.getNodeId());
@@ -358,7 +359,7 @@ mqttClient.setCallback(mqttCallback);
     SerialMon.print(apn);
     if (!modem.gprsConnect(apn)) {
       SerialMon.println(" fail");
-      delay(5000);
+      delay(500);
       return;
     }
     SerialMon.println(" success");
@@ -429,7 +430,8 @@ ulong lastReconnectAttempt;
 void loop() {
   mesh.update(); // mesh scheduler
   mqttClient.loop();
-  if (!mqttClient.connected()) {
+  delay(10);                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+      /* if (!mqttClient.connected()) {
     SerialMon.println("=== MQTT NOT CONNECTED ===");
     // Reconnect every 10 seconds
     uint32_t t = millis();
@@ -439,11 +441,13 @@ void loop() {
         lastReconnectAttempt = 0;
       }
     }
-    delay(100);
     return;
+  }*/
+
+      if (wdt > 300)
+  {
+    ESP.restart();
   }
-      
-  if (wdt > 300){ESP.restart();}
  if (time_now == 10800){ESP.reset();}
  //various checks to ensure redunduncy
  /* if(getlocalIP() == testIP){
@@ -491,11 +495,11 @@ void receivedCallback( const uint32_t &from, const String &msg ) {
     if (!isConnected)
     {
       taskSendLog.disable();
-      SD.begin(D8);
-      File dataFile = SD.open("offlinelog.txt", "a");
+      LittleFS.begin();
+      File dataFile = LittleFS.open("offlinelog.txt", "a");
       dataFile.println(msg);
       dataFile.close();
-      SD.end();
+      LittleFS.end();
       Serial.print("to card");
     }
     else {
@@ -510,7 +514,7 @@ void receivedCallback( const uint32_t &from, const String &msg ) {
   { 
     wdt = 0;
     taskSendLog.enableIfNot();
-    isConnected = true;
+    isConnected = true;/*
     StaticJsonDocument<1024> doc;
     deserializeJson(doc, payload, length);
     if (doc["type"] == "config")
@@ -538,7 +542,7 @@ void receivedCallback( const uint32_t &from, const String &msg ) {
       mesh.sendBroadcast("restart");
       delay(100);
       ESP.restart();
-    }
+    }*/
   }
 
 IPAddress getlocalIP() {
@@ -552,15 +556,15 @@ void time_is_set_scheduled() {
   }
 
   // time machine demo
-  if (time_machine_running) {
+ /* if (time_machine_running) {
     if (time_machine_days == 0)
       Serial.printf("---- settimeofday() has been called - possibly from SNTP\n"
-                    "     (starting time machine demo to show libc's automatic DST handling)\n\n");
+                  //  "     (starting time machine demo to show libc's automatic DST handling)\n\n");
     now = time(nullptr);
     const tm* tm = localtime(&now);
     Serial.printf("future=%3ddays: DST=%s - ",
-                  time_machine_days,
-                  tm->tm_isdst ? "true " : "false");
+               //   time_machine_days,
+                  //tm->tm_isdst ? "true " : "false");
     Serial.print(ctime(&now));
     gettimeofday(&tv, nullptr);
     constexpr int days = 30;
@@ -574,7 +578,7 @@ void time_is_set_scheduled() {
    // settimeofday(&tv, nullptr);
   } else {
     showTime();
-  }
+  }*/
 }
 //check to see if ntp is working 
 void showTime() {
@@ -622,7 +626,19 @@ boolean mqttConnect() {
     return false;
   }
   SerialMon.println(" success");
-      mqttClient.publish("test/lol","Ready! Reconnected");
+      mqttClient.publish("test/lol","ready");
       mqttClient.subscribe("test/rofl");
   return mqttClient.connected();
+}
+ulong getFreeMem(){
+  struct FSInfo {
+    size_t totalBytes;
+    size_t usedBytes;
+    size_t blockSize;
+    size_t pageSize;
+    size_t maxOpenFiles;
+    size_t maxPathLength;
+};
+
+
 }
