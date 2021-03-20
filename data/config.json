@@ -1,4 +1,7 @@
-{
+{   
+
+    
+    "meshNodes": "config",
     
     "mssid":"HetaDatain1",
     "mpass":"Test@Run_1",
